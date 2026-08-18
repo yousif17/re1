@@ -1,0 +1,24 @@
+
+### المميزات الرئيسية
+
+- ✅ Multi-Tenant Architecture
+- ✅ Role-Based Access Control (RBAC)
+- ✅ Super Admin Dashboard
+- ✅ Restaurant Owner Dashboard
+- ✅ Cashier Dashboard
+- ✅ Kitchen Dashboard
+- ✅ Customer QR Menu
+- ✅ Subscription Management
+- ✅ Product & Category Management
+- ✅ Order Management
+- ✅ Inventory Management
+- ✅ Employee Management
+- ✅ Reports & Analytics
+- ✅ Activity Logs
+- ✅ Notifications
+- ✅ Arabic/English Support
+- ✅ Responsive Design
+
+### إعادة تعيين البيانات
+
+افتح Console في المتصفح واكتب:

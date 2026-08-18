@@ -1,0 +1,1 @@
+mkdir -p src/components src/lib src/types

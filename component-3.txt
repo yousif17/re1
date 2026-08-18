@@ -1,0 +1,13 @@
+
+### حسابات الدخول التجريبية
+
+| الدور | البريد الإلكتروني | كلمة المرور |
+|-------|------------------|-------------|
+| **Super Admin** | `yuiusf604@gmail.com` | `Y01012896067y@` |
+| **Restaurant Owner** | `owner@burgerhouse.com` | `owner123` |
+| **Cashier** | `cashier@burgerhouse.com` | `cashier123` |
+| **Kitchen** | `kitchen@burgerhouse.com` | `kitchen123` |
+| **Waiter** | `waiter@burgerhouse.com` | `waiter123` |
+| **Manager** | `manager@burgerhouse.com` | `manager123` |
+
+### صفحة العميل (QR Menu)
