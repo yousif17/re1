@@ -7,6 +7,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  onSnapshot,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
@@ -283,60 +284,138 @@ function persistDelete(
   });
 }
 
-export const db = {  async syncRestaurantData(): Promise<void> {
-    try {
-      const [
-        restaurants,
-        users,
-        subscriptions,
-        categories,
-        products,
-        orders,
-        employees,
-        tables,
-        activityLogs,
-        notifications,
-      ] = await Promise.all([
-        loadCollection<Restaurant>(COLLECTIONS.restaurants),
-        loadCollection<User>(COLLECTIONS.users),
-        loadCollection<Subscription>(COLLECTIONS.subscriptions),
-        loadCollection<Category>(COLLECTIONS.categories),
-        loadCollection<Product>(COLLECTIONS.products),
-        loadCollection<Order>(COLLECTIONS.orders),
-        loadCollection<Employee>(COLLECTIONS.employees),
-        loadCollection<Table>(COLLECTIONS.tables),
-        loadCollection<ActivityLog>(COLLECTIONS.activityLogs),
-        loadCollection<Notification>(COLLECTIONS.notifications),
-      ]);
+export const db = {
+  syncRestaurantData(
+    restaurantId: string,
+    callback?: () => void
+  ): () => void {
+    console.log(
+      "🔄 Starting real-time sync for restaurant:",
+      restaurantId
+    );
 
-      cache.restaurants = restaurants;
-      cache.users = users;
-      cache.subscriptions = subscriptions;
-      cache.categories = categories;
-      cache.products = products;
-      cache.orders = orders;
-      cache.employees = employees;
-      cache.tables = tables;
-      cache.activityLogs = activityLogs;
-      cache.notifications = notifications;
+    const unsubscribers: (() => void)[] = [];
 
-      console.log("✅ Restaurant data synchronized successfully");
-    } catch (error) {
-      console.error("❌ Failed to sync restaurant data:", error);
-      throw error;
-    }
+    const subscribe = <T extends Entity>(
+      collectionName: string,
+      updateCache: (data: T[]) => void
+    ) => {
+      const unsubscribe = onSnapshot(
+        collection(firestore, collectionName),
+        (snapshot) => {
+          const data = snapshot.docs.map((item) => ({
+            id: item.id,
+            ...item.data(),
+          })) as T[];
+
+          updateCache(data);
+
+          if (callback) {
+            callback();
+          }
+        },
+        (error) => {
+          console.error(
+            `❌ Firebase realtime error [${collectionName}]`,
+            error
+          );
+        }
+      );
+
+      unsubscribers.push(unsubscribe);
+    };
+
+    subscribe<Restaurant>(
+      COLLECTIONS.restaurants,
+      (data) => {
+        cache.restaurants = data;
+      }
+    );
+
+    subscribe<User>(
+      COLLECTIONS.users,
+      (data) => {
+        cache.users = data;
+      }
+    );
+
+    subscribe<Subscription>(
+      COLLECTIONS.subscriptions,
+      (data) => {
+        cache.subscriptions = data;
+      }
+    );
+
+    subscribe<Category>(
+      COLLECTIONS.categories,
+      (data) => {
+        cache.categories = data;
+      }
+    );
+
+    subscribe<Product>(
+      COLLECTIONS.products,
+      (data) => {
+        cache.products = data;
+      }
+    );
+
+    subscribe<Order>(
+      COLLECTIONS.orders,
+      (data) => {
+        cache.orders = data;
+      }
+    );
+
+    subscribe<Employee>(
+      COLLECTIONS.employees,
+      (data) => {
+        cache.employees = data;
+      }
+    );
+
+    subscribe<Table>(
+      COLLECTIONS.tables,
+      (data) => {
+        cache.tables = data;
+      }
+    );
+
+    subscribe<ActivityLog>(
+      COLLECTIONS.activityLogs,
+      (data) => {
+        cache.activityLogs = data;
+      }
+    );
+
+    subscribe<Notification>(
+      COLLECTIONS.notifications,
+      (data) => {
+        cache.notifications = data;
+      }
+    );
+
+    return () => {
+      console.log("🛑 Stopping Firebase realtime sync");
+
+      unsubscribers.forEach((unsubscribe) => {
+        unsubscribe();
+      });
+    };
   },
+
   // ============================================================
   // FIREBASE INITIALIZATION
   // ============================================================
 
-  async initializeFromFirebase(): Promise<void> {
+  async initializeFromFirebase(): Promise<boolean> {
     if (firebaseInitialized) {
-      return;
+      return cache.restaurants.length > 0;
     }
 
     if (firebaseInitializing) {
-      return firebaseInitializing;
+      await firebaseInitializing;
+      return cache.restaurants.length > 0;
     }
 
     firebaseInitializing = (async () => {
@@ -378,230 +457,29 @@ export const db = {  async syncRestaurantData(): Promise<void> {
 
         firebaseInitialized = true;
 
-        console.log("✅ Firebase database initialized successfully");
+        console.log(
+          "✅ Firebase database initialized successfully"
+        );
       } catch (error) {
-        console.error("❌ Failed to initialize Firebase database:", error);
+        console.error(
+          "❌ Failed to initialize Firebase database:",
+          error
+        );
+
         throw error;
       } finally {
         firebaseInitializing = null;
       }
     })();
 
-    return firebaseInitializing;
+    await firebaseInitializing;
+
+    return cache.restaurants.length > 0;
   },
 
   isFirebaseInitialized(): boolean {
     return firebaseInitialized;
   },
-
-  // ============================================================
-  // RESTAURANTS
-  // ============================================================
-
-  getRestaurants(): Restaurant[] {
-    return [...cache.restaurants];
-  },
-
-  getRestaurant(id: string): Restaurant | null {
-    return cache.restaurants.find((r) => r.id === id) || null;
-  },
-
-  getRestaurantBySlug(slug: string): Restaurant | null {
-    return cache.restaurants.find((r) => r.slug === slug) || null;
-  },
-
-  createRestaurant(data: Partial<Restaurant>): Restaurant {
-    const now = nowIso();
-
-    const restaurant: Restaurant = {
-      id: generateId(),
-      name: data.name || "",
-      slug: data.slug || "",
-      logo: data.logo || "🍽️",
-      cover: data.cover || "",
-      description: data.description || "",
-      phone: data.phone || "",
-      email: data.email || "",
-      address: data.address || "",
-      city: data.city || "",
-      country: data.country || "Egypt",
-      currency: data.currency || "EGP",
-      timeZone: data.timeZone || "Africa/Cairo",
-      status: data.status || "ACTIVE",
-      tax: data.tax ?? 14,
-      serviceCharge: data.serviceCharge ?? 10,
-      openingHours: data.openingHours || "10:00",
-      closingHours: data.closingHours || "23:00",
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    cache.restaurants.push(restaurant);
-    persist(COLLECTIONS.restaurants, restaurant.id, restaurant);
-
-    return restaurant;
-  },
-
-  updateRestaurant(
-    id: string,
-    data: Partial<Restaurant>
-  ): void {
-    const index = cache.restaurants.findIndex((r) => r.id === id);
-
-    if (index === -1) return;
-
-    const updated = {
-      ...cache.restaurants[index],
-      ...data,
-      updatedAt: nowIso(),
-    };
-
-    cache.restaurants[index] = updated;
-
-    persistUpdate(COLLECTIONS.restaurants, id, {
-      ...data,
-      updatedAt: updated.updatedAt,
-    });
-  },
-
-  deleteRestaurant(id: string): void {
-    cache.restaurants = cache.restaurants.filter((r) => r.id !== id);
-    persistDelete(COLLECTIONS.restaurants, id);
-  },
-
-  getRestaurantRevenue(restaurantId: string): number {
-    const orders = this.getOrders(restaurantId);
-
-    return orders
-      .filter(
-        (o) =>
-          o.status === "COMPLETED" ||
-          o.status === "DELIVERED"
-      )
-      .reduce((sum, o) => sum + o.total, 0);
-  },
-
-  getDaysRemaining(restaurantId: string): number {
-    const sub = this.getSubscriptionByRestaurant(restaurantId);
-
-    if (!sub) return 0;
-
-    const endDate = new Date(sub.endDate);
-    const now = new Date();
-
-    const diff =
-      endDate.getTime() - now.getTime();
-
-    return Math.max(
-      0,
-      Math.ceil(diff / (1000 * 60 * 60 * 24))
-    );
-  },
-
-  // ============================================================
-  // USERS
-  // ============================================================
-
-  getUsers(): User[] {
-    return [...cache.users];
-  },
-
-  getUser(id: string): User | null {
-    return cache.users.find((u) => u.id === id) || null;
-  },
-
-  getUserByEmail(email: string): User | null {
-    return (
-      cache.users.find(
-        (u) =>
-          u.email.toLowerCase() ===
-          email.toLowerCase()
-      ) || null
-    );
-  },
-
-  getUsersByRestaurant(
-    restaurantId: string
-  ): User[] {
-    return cache.users.filter(
-      (u) => u.restaurantId === restaurantId
-    );
-  },
-
-  createUser(data: Partial<User>): User {
-    const now = nowIso();
-
-    const user: User = {
-      id: generateId(),
-      name: data.name || "",
-      email: data.email || "",
-      password: data.password || "password123",
-      phone: data.phone || "",
-      role: data.role || "CASHIER",
-      restaurantId:
-        data.restaurantId !== undefined
-          ? data.restaurantId
-          : null,
-      status: data.status || "ACTIVE",
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    cache.users.push(user);
-    persist(COLLECTIONS.users, user.id, user);
-
-    return user;
-  },
-
-  updateUser(
-    id: string,
-    data: Partial<User>
-  ): void {
-    const index = cache.users.findIndex(
-      (u) => u.id === id
-    );
-
-    if (index === -1) return;
-
-    const updated = {
-      ...cache.users[index],
-      ...data,
-      updatedAt: nowIso(),
-    };
-
-    cache.users[index] = updated;
-
-    persistUpdate(COLLECTIONS.users, id, {
-      ...data,
-      updatedAt: updated.updatedAt,
-    });
-  },
-
-  deleteUser(id: string): void {
-    cache.users = cache.users.filter(
-      (u) => u.id !== id
-    );
-
-    persistDelete(COLLECTIONS.users, id);
-  },
-
-  authenticate(
-    email: string,
-    password: string
-  ): User | null {
-    const user = this.getUserByEmail(email);
-
-    if (
-      user &&
-      user.password === password &&
-      user.status === "ACTIVE"
-    ) {
-      return user;
-    }
-
-    return null;
-  },
-
   // ============================================================
   // SUBSCRIPTIONS
   // ============================================================
