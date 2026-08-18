@@ -1,7 +1,17 @@
-// Database layer using localStorage
+// Database layer using Firebase Firestore
 // Multi-tenant architecture with restaurantId isolation
 
-interface Restaurant {
+import { firestore } from "./firebase";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+
+export interface Restaurant {
   id: string;
   name: string;
   slug: string;
@@ -24,7 +34,7 @@ interface Restaurant {
   updatedAt: string;
 }
 
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
@@ -37,7 +47,7 @@ interface User {
   updatedAt: string;
 }
 
-interface Subscription {
+export interface Subscription {
   id: string;
   restaurantId: string;
   plan: string;
@@ -48,7 +58,7 @@ interface Subscription {
   updatedAt: string;
 }
 
-interface Category {
+export interface Category {
   id: string;
   restaurantId: string;
   name: string;
@@ -58,7 +68,7 @@ interface Category {
   createdAt: string;
 }
 
-interface Product {
+export interface Product {
   id: string;
   restaurantId: string;
   categoryId: string;
@@ -74,12 +84,12 @@ interface Product {
   prepTime: number;
   isAvailable: boolean;
   isFeatured: boolean;
-  image?: string; // أضفنا حقل الصورة هنا
+  image?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-interface Order {
+export interface Order {
   id: string;
   restaurantId: string;
   orderNumber: number;
@@ -100,7 +110,7 @@ interface Order {
   updatedAt: string;
 }
 
-interface Employee {
+export interface Employee {
   id: string;
   restaurantId: string;
   name: string;
@@ -112,7 +122,7 @@ interface Employee {
   updatedAt: string;
 }
 
-interface Table {
+export interface Table {
   id: string;
   restaurantId: string;
   tableNumber: number;
@@ -124,7 +134,7 @@ interface Table {
   updatedAt: string;
 }
 
-interface ActivityLog {
+export interface ActivityLog {
   id: string;
   restaurantId: string | null;
   userId: string;
@@ -134,7 +144,7 @@ interface ActivityLog {
   createdAt: string;
 }
 
-interface Notification {
+export interface Notification {
   id: string;
   restaurantId: string;
   userId: string | null;
@@ -145,49 +155,264 @@ interface Notification {
   createdAt: string;
 }
 
-const STORAGE_KEYS = {
-  restaurants: "restaurantos_restaurants",
-  users: "restaurantos_users",
-  subscriptions: "restaurantos_subscriptions",
-  categories: "restaurantos_categories",
-  products: "restaurantos_products",
-  orders: "restaurantos_orders",
-  employees: "restaurantos_employees",
-  tables: "restaurantos_tables",
-  activityLogs: "restaurantos_activity_logs",
-  notifications: "restaurantos_notifications",
+type Entity =
+  | Restaurant
+  | User
+  | Subscription
+  | Category
+  | Product
+  | Order
+  | Employee
+  | Table
+  | ActivityLog
+  | Notification;
+
+const COLLECTIONS = {
+  restaurants: "restaurants",
+  users: "users",
+  subscriptions: "subscriptions",
+  categories: "categories",
+  products: "products",
+  orders: "orders",
+  employees: "employees",
+  tables: "tables",
+  activityLogs: "activityLogs",
+  notifications: "notifications",
 };
 
+const cache = {
+  restaurants: [] as Restaurant[],
+  users: [] as User[],
+  subscriptions: [] as Subscription[],
+  categories: [] as Category[],
+  products: [] as Product[],
+  orders: [] as Order[],
+  employees: [] as Employee[],
+  tables: [] as Table[],
+  activityLogs: [] as ActivityLog[],
+  notifications: [] as Notification[],
+};
+
+let firebaseInitialized = false;
+let firebaseInitializing: Promise<void> | null = null;
+
 function generateId(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return (
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15)
+  );
 }
 
-function readData<T>(key: string): T[] {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
-function writeData<T>(key: string, data: T[]): void {
-  localStorage.setItem(key, JSON.stringify(data));
+async function loadCollection<T extends Entity>(
+  collectionName: string
+): Promise<T[]> {
+  const snapshot = await getDocs(collection(firestore, collectionName));
+
+  return snapshot.docs.map((item) => ({
+    id: item.id,
+    ...item.data(),
+  })) as T[];
 }
 
-export const db = {
-  // ===== RESTAURANTS =====
+async function saveDocument(
+  collectionName: string,
+  id: string,
+  data: Entity
+): Promise<void> {
+  await setDoc(doc(firestore, collectionName, id), data);
+}
+
+async function updateDocument(
+  collectionName: string,
+  id: string,
+  data: Partial<Entity>
+): Promise<void> {
+  await updateDoc(doc(firestore, collectionName, id), data);
+}
+
+async function removeDocument(
+  collectionName: string,
+  id: string
+): Promise<void> {
+  await deleteDoc(doc(firestore, collectionName, id));
+}
+
+function persist(
+  collectionName: string,
+  id: string,
+  data: Entity
+): void {
+  saveDocument(collectionName, id, data).catch((error) => {
+    console.error(
+      `Firestore save error [${collectionName}/${id}]`,
+      error
+    );
+  });
+}
+
+function persistUpdate(
+  collectionName: string,
+  id: string,
+  data: Partial<Entity>
+): void {
+  updateDocument(collectionName, id, data).catch((error) => {
+    console.error(
+      `Firestore update error [${collectionName}/${id}]`,
+      error
+    );
+  });
+}
+
+function persistDelete(
+  collectionName: string,
+  id: string
+): void {
+  removeDocument(collectionName, id).catch((error) => {
+    console.error(
+      `Firestore delete error [${collectionName}/${id}]`,
+      error
+    );
+  });
+}
+
+export const db = {  async syncRestaurantData(): Promise<void> {
+    try {
+      const [
+        restaurants,
+        users,
+        subscriptions,
+        categories,
+        products,
+        orders,
+        employees,
+        tables,
+        activityLogs,
+        notifications,
+      ] = await Promise.all([
+        loadCollection<Restaurant>(COLLECTIONS.restaurants),
+        loadCollection<User>(COLLECTIONS.users),
+        loadCollection<Subscription>(COLLECTIONS.subscriptions),
+        loadCollection<Category>(COLLECTIONS.categories),
+        loadCollection<Product>(COLLECTIONS.products),
+        loadCollection<Order>(COLLECTIONS.orders),
+        loadCollection<Employee>(COLLECTIONS.employees),
+        loadCollection<Table>(COLLECTIONS.tables),
+        loadCollection<ActivityLog>(COLLECTIONS.activityLogs),
+        loadCollection<Notification>(COLLECTIONS.notifications),
+      ]);
+
+      cache.restaurants = restaurants;
+      cache.users = users;
+      cache.subscriptions = subscriptions;
+      cache.categories = categories;
+      cache.products = products;
+      cache.orders = orders;
+      cache.employees = employees;
+      cache.tables = tables;
+      cache.activityLogs = activityLogs;
+      cache.notifications = notifications;
+
+      console.log("✅ Restaurant data synchronized successfully");
+    } catch (error) {
+      console.error("❌ Failed to sync restaurant data:", error);
+      throw error;
+    }
+  },
+  // ============================================================
+  // FIREBASE INITIALIZATION
+  // ============================================================
+
+  async initializeFromFirebase(): Promise<void> {
+    if (firebaseInitialized) {
+      return;
+    }
+
+    if (firebaseInitializing) {
+      return firebaseInitializing;
+    }
+
+    firebaseInitializing = (async () => {
+      try {
+        const [
+          restaurants,
+          users,
+          subscriptions,
+          categories,
+          products,
+          orders,
+          employees,
+          tables,
+          activityLogs,
+          notifications,
+        ] = await Promise.all([
+          loadCollection<Restaurant>(COLLECTIONS.restaurants),
+          loadCollection<User>(COLLECTIONS.users),
+          loadCollection<Subscription>(COLLECTIONS.subscriptions),
+          loadCollection<Category>(COLLECTIONS.categories),
+          loadCollection<Product>(COLLECTIONS.products),
+          loadCollection<Order>(COLLECTIONS.orders),
+          loadCollection<Employee>(COLLECTIONS.employees),
+          loadCollection<Table>(COLLECTIONS.tables),
+          loadCollection<ActivityLog>(COLLECTIONS.activityLogs),
+          loadCollection<Notification>(COLLECTIONS.notifications),
+        ]);
+
+        cache.restaurants = restaurants;
+        cache.users = users;
+        cache.subscriptions = subscriptions;
+        cache.categories = categories;
+        cache.products = products;
+        cache.orders = orders;
+        cache.employees = employees;
+        cache.tables = tables;
+        cache.activityLogs = activityLogs;
+        cache.notifications = notifications;
+
+        firebaseInitialized = true;
+
+        console.log("✅ Firebase database initialized successfully");
+      } catch (error) {
+        console.error("❌ Failed to initialize Firebase database:", error);
+        throw error;
+      } finally {
+        firebaseInitializing = null;
+      }
+    })();
+
+    return firebaseInitializing;
+  },
+
+  isFirebaseInitialized(): boolean {
+    return firebaseInitialized;
+  },
+
+  // ============================================================
+  // RESTAURANTS
+  // ============================================================
+
   getRestaurants(): Restaurant[] {
-    return readData<Restaurant>(STORAGE_KEYS.restaurants);
+    return [...cache.restaurants];
   },
 
   getRestaurant(id: string): Restaurant | null {
-    return this.getRestaurants().find(r => r.id === id) || null;
+    return cache.restaurants.find((r) => r.id === id) || null;
   },
 
   getRestaurantBySlug(slug: string): Restaurant | null {
-    return this.getRestaurants().find(r => r.slug === slug) || null;
+    return cache.restaurants.find((r) => r.slug === slug) || null;
   },
 
   createRestaurant(data: Partial<Restaurant>): Restaurant {
-    const restaurants = this.getRestaurants();
-    const now = new Date().toISOString();
+    const now = nowIso();
+
     const restaurant: Restaurant = {
       id: generateId(),
       name: data.name || "",
@@ -199,70 +424,113 @@ export const db = {
       email: data.email || "",
       address: data.address || "",
       city: data.city || "",
-      country: data.country || "",
+      country: data.country || "Egypt",
       currency: data.currency || "EGP",
       timeZone: data.timeZone || "Africa/Cairo",
       status: data.status || "ACTIVE",
-      tax: data.tax || 14,
-      serviceCharge: data.serviceCharge || 10,
+      tax: data.tax ?? 14,
+      serviceCharge: data.serviceCharge ?? 10,
       openingHours: data.openingHours || "10:00",
       closingHours: data.closingHours || "23:00",
       createdAt: now,
       updatedAt: now,
     };
-    restaurants.push(restaurant);
-    writeData(STORAGE_KEYS.restaurants, restaurants);
+
+    cache.restaurants.push(restaurant);
+    persist(COLLECTIONS.restaurants, restaurant.id, restaurant);
+
     return restaurant;
   },
 
-  updateRestaurant(id: string, data: Partial<Restaurant>): void {
-    const restaurants = this.getRestaurants();
-    const index = restaurants.findIndex(r => r.id === id);
-    if (index !== -1) {
-      restaurants[index] = { ...restaurants[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.restaurants, restaurants);
-    }
+  updateRestaurant(
+    id: string,
+    data: Partial<Restaurant>
+  ): void {
+    const index = cache.restaurants.findIndex((r) => r.id === id);
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.restaurants[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.restaurants[index] = updated;
+
+    persistUpdate(COLLECTIONS.restaurants, id, {
+      ...data,
+      updatedAt: updated.updatedAt,
+    });
   },
 
   deleteRestaurant(id: string): void {
-    const restaurants = this.getRestaurants().filter(r => r.id !== id);
-    writeData(STORAGE_KEYS.restaurants, restaurants);
+    cache.restaurants = cache.restaurants.filter((r) => r.id !== id);
+    persistDelete(COLLECTIONS.restaurants, id);
   },
 
   getRestaurantRevenue(restaurantId: string): number {
     const orders = this.getOrders(restaurantId);
-    return orders.filter(o => o.status === "COMPLETED" || o.status === "DELIVERED").reduce((sum, o) => sum + o.total, 0);
+
+    return orders
+      .filter(
+        (o) =>
+          o.status === "COMPLETED" ||
+          o.status === "DELIVERED"
+      )
+      .reduce((sum, o) => sum + o.total, 0);
   },
 
   getDaysRemaining(restaurantId: string): number {
     const sub = this.getSubscriptionByRestaurant(restaurantId);
+
     if (!sub) return 0;
+
     const endDate = new Date(sub.endDate);
     const now = new Date();
-    const diff = endDate.getTime() - now.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+
+    const diff =
+      endDate.getTime() - now.getTime();
+
+    return Math.max(
+      0,
+      Math.ceil(diff / (1000 * 60 * 60 * 24))
+    );
   },
 
-  // ===== USERS =====
+  // ============================================================
+  // USERS
+  // ============================================================
+
   getUsers(): User[] {
-    return readData<User>(STORAGE_KEYS.users);
+    return [...cache.users];
   },
 
   getUser(id: string): User | null {
-    return this.getUsers().find(u => u.id === id) || null;
+    return cache.users.find((u) => u.id === id) || null;
   },
 
   getUserByEmail(email: string): User | null {
-    return this.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+    return (
+      cache.users.find(
+        (u) =>
+          u.email.toLowerCase() ===
+          email.toLowerCase()
+      ) || null
+    );
   },
 
-  getUsersByRestaurant(restaurantId: string): User[] {
-    return this.getUsers().filter(u => u.restaurantId === restaurantId);
+  getUsersByRestaurant(
+    restaurantId: string
+  ): User[] {
+    return cache.users.filter(
+      (u) => u.restaurantId === restaurantId
+    );
   },
 
   createUser(data: Partial<User>): User {
-    const users = this.getUsers();
-    const now = new Date().toISOString();
+    const now = nowIso();
+
     const user: User = {
       id: generateId(),
       name: data.name || "",
@@ -270,54 +538,103 @@ export const db = {
       password: data.password || "password123",
       phone: data.phone || "",
       role: data.role || "CASHIER",
-      restaurantId: data.restaurantId || null,
+      restaurantId:
+        data.restaurantId !== undefined
+          ? data.restaurantId
+          : null,
       status: data.status || "ACTIVE",
       createdAt: now,
       updatedAt: now,
     };
-    users.push(user);
-    writeData(STORAGE_KEYS.users, users);
+
+    cache.users.push(user);
+    persist(COLLECTIONS.users, user.id, user);
+
     return user;
   },
 
-  updateUser(id: string, data: Partial<User>): void {
-    const users = this.getUsers();
-    const index = users.findIndex(u => u.id === id);
-    if (index !== -1) {
-      users[index] = { ...users[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.users, users);
-    }
+  updateUser(
+    id: string,
+    data: Partial<User>
+  ): void {
+    const index = cache.users.findIndex(
+      (u) => u.id === id
+    );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.users[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.users[index] = updated;
+
+    persistUpdate(COLLECTIONS.users, id, {
+      ...data,
+      updatedAt: updated.updatedAt,
+    });
   },
 
   deleteUser(id: string): void {
-    const users = this.getUsers().filter(u => u.id !== id);
-    writeData(STORAGE_KEYS.users, users);
+    cache.users = cache.users.filter(
+      (u) => u.id !== id
+    );
+
+    persistDelete(COLLECTIONS.users, id);
   },
 
-  authenticate(email: string, password: string): User | null {
+  authenticate(
+    email: string,
+    password: string
+  ): User | null {
     const user = this.getUserByEmail(email);
-    if (user && user.password === password && user.status === "ACTIVE") {
+
+    if (
+      user &&
+      user.password === password &&
+      user.status === "ACTIVE"
+    ) {
       return user;
     }
+
     return null;
   },
 
-  // ===== SUBSCRIPTIONS =====
+  // ============================================================
+  // SUBSCRIPTIONS
+  // ============================================================
+
   getSubscriptions(): Subscription[] {
-    return readData<Subscription>(STORAGE_KEYS.subscriptions);
+    return [...cache.subscriptions];
   },
 
-  getSubscription(id: string): Subscription | null {
-    return this.getSubscriptions().find(s => s.id === id) || null;
+  getSubscription(
+    id: string
+  ): Subscription | null {
+    return (
+      cache.subscriptions.find(
+        (s) => s.id === id
+      ) || null
+    );
   },
 
-  getSubscriptionByRestaurant(restaurantId: string): Subscription | null {
-    return this.getSubscriptions().find(s => s.restaurantId === restaurantId) || null;
+  getSubscriptionByRestaurant(
+    restaurantId: string
+  ): Subscription | null {
+    return (
+      cache.subscriptions.find(
+        (s) => s.restaurantId === restaurantId
+      ) || null
+    );
   },
 
-  createSubscription(data: Partial<Subscription>): Subscription {
-    const subscriptions = this.getSubscriptions();
-    const now = new Date().toISOString();
+  createSubscription(
+    data: Partial<Subscription>
+  ): Subscription {
+    const now = nowIso();
+
     const subscription: Subscription = {
       id: generateId(),
       restaurantId: data.restaurantId || "",
@@ -328,71 +645,152 @@ export const db = {
       createdAt: now,
       updatedAt: now,
     };
-    subscriptions.push(subscription);
-    writeData(STORAGE_KEYS.subscriptions, subscriptions);
+
+    cache.subscriptions.push(subscription);
+
+    persist(
+      COLLECTIONS.subscriptions,
+      subscription.id,
+      subscription
+    );
+
     return subscription;
   },
 
-  updateSubscription(id: string, data: Partial<Subscription>): void {
-    const subscriptions = this.getSubscriptions();
-    const index = subscriptions.findIndex(s => s.id === id);
-    if (index !== -1) {
-      subscriptions[index] = { ...subscriptions[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.subscriptions, subscriptions);
-    }
+  updateSubscription(
+    id: string,
+    data: Partial<Subscription>
+  ): void {
+    const index =
+      cache.subscriptions.findIndex(
+        (s) => s.id === id
+      );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.subscriptions[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.subscriptions[index] = updated;
+
+    persistUpdate(
+      COLLECTIONS.subscriptions,
+      id,
+      {
+        ...data,
+        updatedAt: updated.updatedAt,
+      }
+    );
   },
 
-  // ===== CATEGORIES =====
-  getCategories(restaurantId: string): Category[] {
-    return readData<Category>(STORAGE_KEYS.categories).filter(c => c.restaurantId === restaurantId);
+  // ============================================================
+  // CATEGORIES
+  // ============================================================
+
+  getCategories(
+    restaurantId: string
+  ): Category[] {
+    return cache.categories.filter(
+      (c) => c.restaurantId === restaurantId
+    );
   },
 
   getCategory(id: string): Category | null {
-    return readData<Category>(STORAGE_KEYS.categories).find(c => c.id === id) || null;
+    return (
+      cache.categories.find(
+        (c) => c.id === id
+      ) || null
+    );
   },
 
-  createCategory(data: Partial<Category>): Category {
-    const categories = readData<Category>(STORAGE_KEYS.categories);
+  createCategory(
+    data: Partial<Category>
+  ): Category {
     const category: Category = {
       id: generateId(),
       restaurantId: data.restaurantId || "",
       name: data.name || "",
       nameAr: data.nameAr || "",
-      sortOrder: data.sortOrder || 0,
-      isHidden: data.isHidden || false,
-      createdAt: new Date().toISOString(),
+      sortOrder: data.sortOrder ?? 0,
+      isHidden: data.isHidden ?? false,
+      createdAt: nowIso(),
     };
-    categories.push(category);
-    writeData(STORAGE_KEYS.categories, categories);
+
+    cache.categories.push(category);
+
+    persist(
+      COLLECTIONS.categories,
+      category.id,
+      category
+    );
+
     return category;
   },
 
-  updateCategory(id: string, data: Partial<Category>): void {
-    const categories = readData<Category>(STORAGE_KEYS.categories);
-    const index = categories.findIndex(c => c.id === id);
-    if (index !== -1) {
-      categories[index] = { ...categories[index], ...data };
-      writeData(STORAGE_KEYS.categories, categories);
-    }
+  updateCategory(
+    id: string,
+    data: Partial<Category>
+  ): void {
+    const index =
+      cache.categories.findIndex(
+        (c) => c.id === id
+      );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.categories[index],
+      ...data,
+    };
+
+    cache.categories[index] = updated;
+
+    persistUpdate(
+      COLLECTIONS.categories,
+      id,
+      data
+    );
   },
 
   deleteCategory(id: string): void {
-    const categories = readData<Category>(STORAGE_KEYS.categories).filter(c => c.id !== id);
-    writeData(STORAGE_KEYS.categories, categories);
+    cache.categories = cache.categories.filter(
+      (c) => c.id !== id
+    );
+
+    persistDelete(
+      COLLECTIONS.categories,
+      id
+    );
   },
 
-  // ===== PRODUCTS =====
-  getProducts(restaurantId: string): Product[] {
-    return readData<Product>(STORAGE_KEYS.products).filter(p => p.restaurantId === restaurantId);
+  // ============================================================
+  // PRODUCTS
+  // ============================================================
+
+  getProducts(
+    restaurantId: string
+  ): Product[] {
+    return cache.products.filter(
+      (p) => p.restaurantId === restaurantId
+    );
   },
 
   getProduct(id: string): Product | null {
-    return readData<Product>(STORAGE_KEYS.products).find(p => p.id === id) || null;
+    return (
+      cache.products.find(
+        (p) => p.id === id
+      ) || null
+    );
   },
 
-  createProduct(data: Partial<Product>): Product {
-    const products = readData<Product>(STORAGE_KEYS.products);
-    const now = new Date().toISOString();
+  createProduct(
+    data: Partial<Product>
+  ): Product {
+    const now = nowIso();
+
     const product: Product = {
       id: generateId(),
       restaurantId: data.restaurantId || "",
@@ -401,165 +799,366 @@ export const db = {
       nameAr: data.nameAr || "",
       description: data.description || "",
       descriptionAr: data.descriptionAr || "",
-      price: data.price || 0,
-      costPrice: data.costPrice || 0,
+      price: data.price ?? 0,
+      costPrice: data.costPrice ?? 0,
       sku: data.sku || "",
-      stock: data.stock || 0,
-      minStock: data.minStock || 0,
-      prepTime: data.prepTime || 15,
-      isAvailable: data.isAvailable !== undefined ? data.isAvailable : true,
-      isFeatured: data.isFeatured || false,
-      image: data.image || "", // تم الإضافة لدعم الصورة
+      stock: data.stock ?? 0,
+      minStock: data.minStock ?? 0,
+      prepTime: data.prepTime ?? 15,
+      isAvailable:
+        data.isAvailable !== undefined
+          ? data.isAvailable
+          : true,
+      isFeatured: data.isFeatured ?? false,
+      image: data.image || "",
       createdAt: now,
       updatedAt: now,
     };
-    products.push(product);
-    writeData(STORAGE_KEYS.products, products);
+
+    cache.products.push(product);
+
+    persist(
+      COLLECTIONS.products,
+      product.id,
+      product
+    );
+
     return product;
   },
 
-  updateProduct(id: string, data: Partial<Product>): void {
-    const products = readData<Product>(STORAGE_KEYS.products);
-    const index = products.findIndex(p => p.id === id);
-    if (index !== -1) {
-      products[index] = { ...products[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.products, products);
-    }
+  updateProduct(
+    id: string,
+    data: Partial<Product>
+  ): void {
+    const index = cache.products.findIndex(
+      (p) => p.id === id
+    );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.products[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.products[index] = updated;
+
+    persistUpdate(
+      COLLECTIONS.products,
+      id,
+      {
+        ...data,
+        updatedAt: updated.updatedAt,
+      }
+    );
   },
 
   deleteProduct(id: string): void {
-    const products = readData<Product>(STORAGE_KEYS.products).filter(p => p.id !== id);
-    writeData(STORAGE_KEYS.products, products);
+    cache.products = cache.products.filter(
+      (p) => p.id !== id
+    );
+
+    persistDelete(
+      COLLECTIONS.products,
+      id
+    );
   },
 
-  // ===== ORDERS =====
-  getOrders(restaurantId: string): Order[] {
-    return readData<Order>(STORAGE_KEYS.orders).filter(o => o.restaurantId === restaurantId);
+  // ============================================================
+  // ORDERS
+  // ============================================================
+
+  getOrders(
+    restaurantId: string
+  ): Order[] {
+    return cache.orders.filter(
+      (o) => o.restaurantId === restaurantId
+    );
   },
 
   getOrder(id: string): Order | null {
-    return readData<Order>(STORAGE_KEYS.orders).find(o => o.id === id) || null;
+    return (
+      cache.orders.find(
+        (o) => o.id === id
+      ) || null
+    );
   },
 
-  getOrdersByTable(tableId: string): Order[] {
-    return readData<Order>(STORAGE_KEYS.orders).filter(o => o.tableId === tableId);
+  getOrdersByTable(
+    tableId: string
+  ): Order[] {
+    return cache.orders.filter(
+      (o) => o.tableId === tableId
+    );
   },
 
-  createOrder(data: Partial<Order>): Order {
-    const orders = readData<Order>(STORAGE_KEYS.orders);
-    const restaurantOrders = orders.filter(o => o.restaurantId === data.restaurantId);
-    const nextNumber = restaurantOrders.length > 0 ? Math.max(...restaurantOrders.map(o => o.orderNumber)) + 1 : 1001;
-    const now = new Date().toISOString();
+  createOrder(
+    data: Partial<Order>
+  ): Order {
+    const restaurantOrders =
+      cache.orders.filter(
+        (o) =>
+          o.restaurantId === data.restaurantId
+      );
+
+    const nextNumber =
+      restaurantOrders.length > 0
+        ? Math.max(
+            ...restaurantOrders.map(
+              (o) => o.orderNumber
+            )
+          ) + 1
+        : 1001;
+
+    const now = nowIso();
+
     const order: Order = {
       id: generateId(),
       restaurantId: data.restaurantId || "",
       orderNumber: nextNumber,
       tableId: data.tableId || null,
-      customerName: data.customerName || "Guest",
-      customerPhone: data.customerPhone || "",
+      customerName:
+        data.customerName || "Guest",
+      customerPhone:
+        data.customerPhone || "",
       items: data.items || [],
-      subtotal: data.subtotal || 0,
-      discount: data.discount || 0,
-      tax: data.tax || 0,
-      serviceCharge: data.serviceCharge || 0,
-      total: data.total || 0,
-      paymentMethod: data.paymentMethod || "CASH",
+      subtotal: data.subtotal ?? 0,
+      discount: data.discount ?? 0,
+      tax: data.tax ?? 0,
+      serviceCharge:
+        data.serviceCharge ?? 0,
+      total: data.total ?? 0,
+      paymentMethod:
+        data.paymentMethod || "CASH",
       status: data.status || "NEW",
       source: data.source || "CASHIER",
       notes: data.notes || "",
       createdAt: now,
       updatedAt: now,
     };
-    orders.push(order);
-    writeData(STORAGE_KEYS.orders, orders);
+
+    cache.orders.push(order);
+
+    persist(
+      COLLECTIONS.orders,
+      order.id,
+      order
+    );
+
     return order;
   },
 
-  updateOrder(id: string, data: Partial<Order>): void {
-    const orders = readData<Order>(STORAGE_KEYS.orders);
-    const index = orders.findIndex(o => o.id === id);
-    if (index !== -1) {
-      orders[index] = { ...orders[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.orders, orders);
-    }
+  updateOrder(
+    id: string,
+    data: Partial<Order>
+  ): void {
+    const index = cache.orders.findIndex(
+      (o) => o.id === id
+    );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.orders[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.orders[index] = updated;
+
+    persistUpdate(
+      COLLECTIONS.orders,
+      id,
+      {
+        ...data,
+        updatedAt: updated.updatedAt,
+      }
+    );
   },
 
-  updateOrderStatus(id: string, status: string): void {
+  updateOrderStatus(
+    id: string,
+    status: string
+  ): void {
     this.updateOrder(id, { status });
   },
 
-  // ===== TABLES =====
-  getTables(restaurantId: string): Table[] {
-    return readData<Table>(STORAGE_KEYS.tables).filter(t => t.restaurantId === restaurantId);
+  // ============================================================
+  // TABLES
+  // ============================================================
+
+  getTables(
+    restaurantId: string
+  ): Table[] {
+    return cache.tables.filter(
+      (t) => t.restaurantId === restaurantId
+    );
   },
 
   getTable(id: string): Table | null {
-    return readData<Table>(STORAGE_KEYS.tables).find(t => t.id === id) || null;
+    return (
+      cache.tables.find(
+        (t) => t.id === id
+      ) || null
+    );
   },
 
-  getTableByNumber(restaurantId: string, tableNumber: number): Table | null {
-    return readData<Table>(STORAGE_KEYS.tables).find(t => t.restaurantId === restaurantId && t.tableNumber === tableNumber) || null;
+  getTableByNumber(
+    restaurantId: string,
+    tableNumber: number
+  ): Table | null {
+    return (
+      cache.tables.find(
+        (t) =>
+          t.restaurantId === restaurantId &&
+          t.tableNumber === tableNumber
+      ) || null
+    );
   },
 
-  createTable(data: Partial<Table>): Table {
-    const tables = readData<Table>(STORAGE_KEYS.tables);
-    const restaurantTables = tables.filter(t => t.restaurantId === data.restaurantId);
-    const nextNumber = restaurantTables.length > 0 ? Math.max(...restaurantTables.map(t => t.tableNumber)) + 1 : 1;
-    const now = new Date().toISOString();
+  createTable(
+    data: Partial<Table>
+  ): Table {
+    const restaurantTables =
+      cache.tables.filter(
+        (t) =>
+          t.restaurantId === data.restaurantId
+      );
+
+    const nextNumber =
+      restaurantTables.length > 0
+        ? Math.max(
+            ...restaurantTables.map(
+              (t) => t.tableNumber
+            )
+          ) + 1
+        : 1;
+
+    const now = nowIso();
+
     const table: Table = {
       id: generateId(),
       restaurantId: data.restaurantId || "",
       tableNumber: nextNumber,
-      name: data.name || `Table ${nextNumber}`,
-      status: data.status || "AVAILABLE",
-      qrCode: generateId() + generateId(),
+      name:
+        data.name ||
+        `Table ${nextNumber}`,
+      status:
+        data.status || "AVAILABLE",
+      qrCode:
+        generateId() + generateId(),
       qrEnabled: true,
       createdAt: now,
       updatedAt: now,
     };
-    tables.push(table);
-    writeData(STORAGE_KEYS.tables, tables);
+
+    cache.tables.push(table);
+
+    persist(
+      COLLECTIONS.tables,
+      table.id,
+      table
+    );
+
     return table;
   },
 
-  updateTable(id: string, data: Partial<Table>): void {
-    const tables = readData<Table>(STORAGE_KEYS.tables);
-    const index = tables.findIndex(t => t.id === id);
-    if (index !== -1) {
-      tables[index] = { ...tables[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.tables, tables);
-    }
+  updateTable(
+    id: string,
+    data: Partial<Table>
+  ): void {
+    const index = cache.tables.findIndex(
+      (t) => t.id === id
+    );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.tables[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.tables[index] = updated;
+
+    persistUpdate(
+      COLLECTIONS.tables,
+      id,
+      {
+        ...data,
+        updatedAt: updated.updatedAt,
+      }
+    );
   },
 
   deleteTable(id: string): void {
-    const tables = readData<Table>(STORAGE_KEYS.tables).filter(t => t.id !== id);
-    writeData(STORAGE_KEYS.tables, tables);
+    cache.tables = cache.tables.filter(
+      (t) => t.id !== id
+    );
+
+    persistDelete(
+      COLLECTIONS.tables,
+      id
+    );
   },
 
   regenerateTableQR(id: string): void {
-    this.updateTable(id, { qrCode: generateId() + generateId() });
+    this.updateTable(id, {
+      qrCode:
+        generateId() + generateId(),
+    });
   },
 
-  getTableByQRCode(qrCode: string): Table | null {
-    return readData<Table>(STORAGE_KEYS.tables).find(t => t.qrCode === qrCode && t.qrEnabled) || null;
+  getTableByQRCode(
+    qrCode: string
+  ): Table | null {
+    return (
+      cache.tables.find(
+        (t) =>
+          t.qrCode === qrCode &&
+          t.qrEnabled
+      ) || null
+    );
   },
 
-  // ===== EMPLOYEES =====
-  getEmployees(restaurantId: string): Employee[] {
-    return readData<Employee>(STORAGE_KEYS.employees).filter(e => e.restaurantId === restaurantId);
+  // ============================================================
+  // EMPLOYEES
+  // ============================================================
+
+  getEmployees(
+    restaurantId: string
+  ): Employee[] {
+    return cache.employees.filter(
+      (e) => e.restaurantId === restaurantId
+    );
   },
 
   getEmployee(id: string): Employee | null {
-    return readData<Employee>(STORAGE_KEYS.employees).find(e => e.id === id) || null;
+    return (
+      cache.employees.find(
+        (e) => e.id === id
+      ) || null
+    );
   },
 
-  getEmployeeByEmail(email: string): Employee | null {
-    return readData<Employee>(STORAGE_KEYS.employees).find(e => e.email.toLowerCase() === email.toLowerCase()) || null;
+  getEmployeeByEmail(
+    email: string
+  ): Employee | null {
+    return (
+      cache.employees.find(
+        (e) =>
+          e.email.toLowerCase() ===
+          email.toLowerCase()
+      ) || null
+    );
   },
 
-  createEmployee(data: Partial<Employee>): Employee {
-    const employees = readData<Employee>(STORAGE_KEYS.employees);
-    const now = new Date().toISOString();
+  createEmployee(
+    data: Partial<Employee>
+  ): Employee {
+    const now = nowIso();
+
     const employee: Employee = {
       id: generateId(),
       restaurantId: data.restaurantId || "",
@@ -571,87 +1170,198 @@ export const db = {
       createdAt: now,
       updatedAt: now,
     };
-    employees.push(employee);
-    writeData(STORAGE_KEYS.employees, employees);
+
+    cache.employees.push(employee);
+
+    persist(
+      COLLECTIONS.employees,
+      employee.id,
+      employee
+    );
+
     return employee;
   },
 
-  updateEmployee(id: string, data: Partial<Employee>): void {
-    const employees = readData<Employee>(STORAGE_KEYS.employees);
-    const index = employees.findIndex(e => e.id === id);
-    if (index !== -1) {
-      employees[index] = { ...employees[index], ...data, updatedAt: new Date().toISOString() };
-      writeData(STORAGE_KEYS.employees, employees);
-    }
+  updateEmployee(
+    id: string,
+    data: Partial<Employee>
+  ): void {
+    const index =
+      cache.employees.findIndex(
+        (e) => e.id === id
+      );
+
+    if (index === -1) return;
+
+    const updated = {
+      ...cache.employees[index],
+      ...data,
+      updatedAt: nowIso(),
+    };
+
+    cache.employees[index] = updated;
+
+    persistUpdate(
+      COLLECTIONS.employees,
+      id,
+      {
+        ...data,
+        updatedAt: updated.updatedAt,
+      }
+    );
   },
 
   deleteEmployee(id: string): void {
-    const employees = readData<Employee>(STORAGE_KEYS.employees).filter(e => e.id !== id);
-    writeData(STORAGE_KEYS.employees, employees);
+    cache.employees =
+      cache.employees.filter(
+        (e) => e.id !== id
+      );
+
+    persistDelete(
+      COLLECTIONS.employees,
+      id
+    );
   },
 
-  // ===== ACTIVITY LOGS =====
+  // ============================================================
+  // ACTIVITY LOGS
+  // ============================================================
+
   getActivityLogs(): ActivityLog[] {
-    return readData<ActivityLog>(STORAGE_KEYS.activityLogs);
+    return [...cache.activityLogs];
   },
 
-  addActivityLog(data: Partial<ActivityLog>): ActivityLog {
-    const logs = this.getActivityLogs();
+  addActivityLog(
+    data: Partial<ActivityLog>
+  ): ActivityLog {
     const log: ActivityLog = {
       id: generateId(),
-      restaurantId: data.restaurantId || null,
+      restaurantId:
+        data.restaurantId || null,
       userId: data.userId || "",
-      userName: data.userName || "System",
+      userName:
+        data.userName || "System",
       action: data.action || "",
       details: data.details || "",
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso(),
     };
-    logs.push(log);
-    writeData(STORAGE_KEYS.activityLogs, logs);
+
+    cache.activityLogs.push(log);
+
+    persist(
+      COLLECTIONS.activityLogs,
+      log.id,
+      log
+    );
+
     return log;
   },
 
-  // ===== NOTIFICATIONS =====
-  getNotifications(restaurantId: string): Notification[] {
-    return readData<Notification>(STORAGE_KEYS.notifications).filter(n => n.restaurantId === restaurantId);
+  // ============================================================
+  // NOTIFICATIONS
+  // ============================================================
+
+  getNotifications(
+    restaurantId: string
+  ): Notification[] {
+    return cache.notifications.filter(
+      (n) =>
+        n.restaurantId === restaurantId
+    );
   },
 
-  getNotificationsByUser(userId: string): Notification[] {
-    return readData<Notification>(STORAGE_KEYS.notifications).filter(n => n.userId === userId);
+  getNotificationsByUser(
+    userId: string
+  ): Notification[] {
+    return cache.notifications.filter(
+      (n) => n.userId === userId
+    );
   },
 
-  createNotification(data: Partial<Notification>): Notification {
-    const notifications = readData<Notification>(STORAGE_KEYS.notifications);
+  createNotification(
+    data: Partial<Notification>
+  ): Notification {
     const notification: Notification = {
       id: generateId(),
-      restaurantId: data.restaurantId || "",
-      userId: data.userId || null,
+      restaurantId:
+        data.restaurantId || "",
+      userId:
+        data.userId !== undefined
+          ? data.userId
+          : null,
       title: data.title || "",
       message: data.message || "",
       type: data.type || "SYSTEM",
       read: false,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso(),
     };
-    notifications.push(notification);
-    writeData(STORAGE_KEYS.notifications, notifications);
+
+    cache.notifications.push(notification);
+
+    persist(
+      COLLECTIONS.notifications,
+      notification.id,
+      notification
+    );
+
     return notification;
   },
 
   markNotificationRead(id: string): void {
-    const notifications = readData<Notification>(STORAGE_KEYS.notifications);
-    const index = notifications.findIndex(n => n.id === id);
-    if (index !== -1) {
-      notifications[index].read = true;
-      writeData(STORAGE_KEYS.notifications, notifications);
-    }
+    const index =
+      cache.notifications.findIndex(
+        (n) => n.id === id
+      );
+
+    if (index === -1) return;
+
+    cache.notifications[index] = {
+      ...cache.notifications[index],
+      read: true,
+    };
+
+    persistUpdate(
+      COLLECTIONS.notifications,
+      id,
+      { read: true }
+    );
   },
 
-  // ===== SEED DATA =====
-  seed(): void {
-    // Clear all data
-    Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+  // ============================================================
+  // SEED DATA
+  // ============================================================
 
-    // Create Super Admin
+  async seed(): Promise<void> {
+    // Remove existing Firestore data from all collections
+    const collectionNames = Object.values(
+      COLLECTIONS
+    );
+
+    for (const collectionName of collectionNames) {
+      const snapshot = await getDocs(
+        collection(firestore, collectionName)
+      );
+
+      await Promise.all(
+        snapshot.docs.map((item) =>
+          deleteDoc(item.ref)
+        )
+      );
+    }
+
+    // Clear local cache
+    cache.restaurants = [];
+    cache.users = [];
+    cache.subscriptions = [];
+    cache.categories = [];
+    cache.products = [];
+    cache.orders = [];
+    cache.employees = [];
+    cache.tables = [];
+    cache.activityLogs = [];
+    cache.notifications = [];
+
+    // Super Admin
     this.createUser({
       name: "Super Admin",
       email: "yuiusf604@gmail.com",
@@ -662,13 +1372,14 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Demo Restaurant
+    // Restaurant
     const restaurant = this.createRestaurant({
       name: "Burger House",
       slug: "burger-house",
       logo: "🍔",
       cover: "",
-      description: "Delicious burgers and more",
+      description:
+        "Delicious burgers and more",
       phone: "+201234567890",
       email: "info@burgerhouse.com",
       address: "123 Main Street",
@@ -683,7 +1394,7 @@ export const db = {
       closingHours: "23:00",
     });
 
-    // Create Demo Owner
+    // Owner
     this.createUser({
       name: "Ahmed Hassan",
       email: "owner@burgerhouse.com",
@@ -694,7 +1405,7 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Demo Cashier
+    // Cashier
     this.createUser({
       name: "Sara Ali",
       email: "cashier@burgerhouse.com",
@@ -705,7 +1416,7 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Demo Kitchen Staff
+    // Kitchen
     this.createUser({
       name: "Mohamed Kamal",
       email: "kitchen@burgerhouse.com",
@@ -716,7 +1427,7 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Demo Waiter
+    // Waiter
     this.createUser({
       name: "Omar Farouk",
       email: "waiter@burgerhouse.com",
@@ -727,10 +1438,14 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Subscription
+    // Subscription
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + 12);
+
+    endDate.setMonth(
+      endDate.getMonth() + 12
+    );
+
     this.createSubscription({
       restaurantId: restaurant.id,
       plan: "PREMIUM",
@@ -739,7 +1454,7 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Categories
+    // Categories
     const burgers = this.createCategory({
       restaurantId: restaurant.id,
       name: "Burgers",
@@ -764,14 +1479,16 @@ export const db = {
       isHidden: false,
     });
 
-    // Create Products (مع روابط صور جاهزة واحترافية)
+    // Products
     this.createProduct({
       restaurantId: restaurant.id,
       categoryId: burgers.id,
       name: "Classic Burger",
       nameAr: "برجر كلاسيك",
-      description: "Beef patty with lettuce, tomato, and special sauce",
-      descriptionAr: "لحم بقري مع خس وطماطم وصوص خاص",
+      description:
+        "Beef patty with lettuce, tomato, and special sauce",
+      descriptionAr:
+        "لحم بقري مع خس وطماطم وصوص خاص",
       price: 120,
       costPrice: 60,
       sku: "BUR-001",
@@ -780,7 +1497,8 @@ export const db = {
       prepTime: 15,
       isAvailable: true,
       isFeatured: true,
-      image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80" // صورة برجر
+      image:
+        "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80",
     });
 
     this.createProduct({
@@ -788,8 +1506,10 @@ export const db = {
       categoryId: burgers.id,
       name: "Cheese Burger",
       nameAr: "برجر جبنة",
-      description: "Beef patty with cheddar cheese",
-      descriptionAr: "لحم بقري مع جبنة شيدر",
+      description:
+        "Beef patty with cheddar cheese",
+      descriptionAr:
+        "لحم بقري مع جبنة شيدر",
       price: 140,
       costPrice: 70,
       sku: "BUR-002",
@@ -798,7 +1518,8 @@ export const db = {
       prepTime: 15,
       isAvailable: true,
       isFeatured: true,
-      image: "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80" // صورة برجر جبنة
+      image:
+        "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80",
     });
 
     this.createProduct({
@@ -806,8 +1527,10 @@ export const db = {
       categoryId: drinks.id,
       name: "Cola",
       nameAr: "كولا",
-      description: "Refreshing cola drink",
-      descriptionAr: "مشروب كولا منعش",
+      description:
+        "Refreshing cola drink",
+      descriptionAr:
+        "مشروب كولا منعش",
       price: 30,
       costPrice: 10,
       sku: "DRK-001",
@@ -816,7 +1539,8 @@ export const db = {
       prepTime: 2,
       isAvailable: true,
       isFeatured: false,
-      image: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80" // صورة كولا
+      image:
+        "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80",
     });
 
     this.createProduct({
@@ -824,8 +1548,10 @@ export const db = {
       categoryId: desserts.id,
       name: "Chocolate Cake",
       nameAr: "كيك شوكولاتة",
-      description: "Rich chocolate cake slice",
-      descriptionAr: "قطعة كيك شوكولاتة غنية",
+      description:
+        "Rich chocolate cake slice",
+      descriptionAr:
+        "قطعة كيك شوكولاتة غنية",
       price: 80,
       costPrice: 35,
       sku: "DES-001",
@@ -834,10 +1560,11 @@ export const db = {
       prepTime: 5,
       isAvailable: true,
       isFeatured: false,
-      image: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80" // صورة كيك شوكولاتة
+      image:
+        "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80",
     });
 
-    // Create Employees
+    // Employees
     this.createEmployee({
       restaurantId: restaurant.id,
       name: "Sara Ali",
@@ -865,7 +1592,7 @@ export const db = {
       status: "ACTIVE",
     });
 
-    // Create Tables
+    // Tables
     for (let i = 1; i <= 6; i++) {
       this.createTable({
         restaurantId: restaurant.id,
@@ -873,15 +1600,22 @@ export const db = {
         status: "AVAILABLE",
       });
     }
-    
 
-    // Create Activity Log
+    // Activity Log
     this.addActivityLog({
       restaurantId: restaurant.id,
       userId: "system",
       userName: "System",
       action: "SYSTEM_INITIALIZED",
-      details: "Demo data has been initialized",
+      details:
+        "Demo data has been initialized",
     });
+
+    // Give all pending Firestore writes some time to finish
+    await new Promise((resolve) =>
+      setTimeout(resolve, 1000)
+    );
+
+    console.log("✅ Firebase seed completed");
   },
 };
