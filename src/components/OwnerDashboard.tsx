@@ -102,7 +102,7 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
       prepTime: parseInt(productForm.prepTime) || 15,
       isAvailable: productForm.isAvailable,
       isFeatured: productForm.isFeatured,
-      image: productForm.image, // Sending the image to the database
+      image: productForm.image, // Saving the local image data
     });
 
     db.addActivityLog({
@@ -1104,19 +1104,51 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
                 placeholder="وصف المنتج"
               />
             </div>
-            
-            {/* Added Image URL Field */}
+
+            {/* Smart Image Upload Section */}
             <div className="space-y-2 md:col-span-2">
-              <Label>Image URL (رابط الصورة)</Label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Label>Product Image (صورة المنتج)</Label>
+              <div className="flex items-center gap-4">
+                {productForm.image ? (
+                  <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0 relative group">
+                    <img src={productForm.image} alt="Preview" className="w-full h-full object-cover" />
+                    <button 
+                      type="button"
+                      className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => setProductForm({ ...productForm, image: "" })}
+                      title="حذف الصورة"
+                    >
+                      <XCircle className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200 shrink-0">
+                    <ImageIcon className="w-6 h-6 text-slate-400" />
+                  </div>
+                )}
+                <div className="flex-1">
                   <Input
-                    value={productForm.image}
-                    onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
-                    placeholder="https://example.com/image.jpg"
-                    className="pl-10"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        // حماية حجم الملف لتجنب توقف المتصفح (الحد الأقصى 500KB تقريباً)
+                        if (file.size > 500 * 1024) {
+                          alert("حجم الصورة كبير جداً! يرجى اختيار صورة حجمها أقل من 500 كيلوبايت حتى لا تمتلئ ذاكرة النظام.");
+                          e.target.value = ""; 
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setProductForm({ ...productForm, image: reader.result as string });
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="cursor-pointer file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
                   />
+                  <p className="text-xs text-slate-500 mt-1.5">يفضل اختيار صورة حجمها صغير (أقل من 500KB)</p>
                 </div>
               </div>
             </div>
