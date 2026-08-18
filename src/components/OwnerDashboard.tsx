@@ -14,7 +14,7 @@ import {
   Plus, Search, TrendingUp, AlertTriangle, Clock, CheckCircle2,
   XCircle, Building2, DollarSign, ShoppingBag, CalendarDays,
   MoreHorizontal, Pencil, Trash2, Eye, Ban, RefreshCcw,
-  Menu, Package, Table2, QrCode, Settings, BarChart3, Bell
+  Menu, Package, Table2, QrCode, Settings, BarChart3, Bell, Image as ImageIcon
 } from "lucide-react";
 
 interface OwnerDashboardProps {
@@ -40,11 +40,11 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
   const [showEditProduct, setShowEditProduct] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Form states
+  // Form states - Added image field
   const [productForm, setProductForm] = useState({
     name: "", nameAr: "", description: "", descriptionAr: "",
     price: "", costPrice: "", categoryId: "", sku: "",
-    stock: "", minStock: "", prepTime: "15", isAvailable: true, isFeatured: false
+    stock: "", minStock: "", prepTime: "15", isAvailable: true, isFeatured: false, image: ""
   });
 
   const [categoryForm, setCategoryForm] = useState({
@@ -102,6 +102,7 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
       prepTime: parseInt(productForm.prepTime) || 15,
       isAvailable: productForm.isAvailable,
       isFeatured: productForm.isFeatured,
+      image: productForm.image, // Sending the image to the database
     });
 
     db.addActivityLog({
@@ -116,7 +117,7 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
     setProductForm({
       name: "", nameAr: "", description: "", descriptionAr: "",
       price: "", costPrice: "", categoryId: "", sku: "",
-      stock: "", minStock: "", prepTime: "15", isAvailable: true, isFeatured: false
+      stock: "", minStock: "", prepTime: "15", isAvailable: true, isFeatured: false, image: ""
     });
     refreshData();
   };
@@ -690,9 +691,18 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
                 {filteredProducts.map(product => {
                   const category = db.getCategory(product.categoryId);
                   return (
-                    <Card key={product.id} className="overflow-hidden">
-                      <CardContent className="p-0">
-                        <div className="p-4">
+                    <Card key={product.id} className="overflow-hidden flex flex-col">
+                      {product.image && (
+                        <div className="w-full h-32 bg-slate-100 overflow-hidden">
+                          <img 
+                            src={product.image} 
+                            alt={product.name} 
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      <CardContent className="p-0 flex-1 flex flex-col">
+                        <div className="p-4 flex-1">
                           <div className="flex items-start justify-between mb-2">
                             <div>
                               <h3 className="font-semibold text-slate-900">{product.name}</h3>
@@ -721,7 +731,7 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
                             <span className="text-slate-500">Min: {product.minStock}</span>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between p-3 bg-slate-50 border-t border-slate-100">
+                        <div className="flex items-center justify-between p-3 bg-slate-50 border-t border-slate-100 mt-auto">
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
@@ -1094,6 +1104,23 @@ export function OwnerDashboard({ user, onLogout }: OwnerDashboardProps) {
                 placeholder="وصف المنتج"
               />
             </div>
+            
+            {/* Added Image URL Field */}
+            <div className="space-y-2 md:col-span-2">
+              <Label>Image URL (رابط الصورة)</Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    value={productForm.image}
+                    onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
+                    placeholder="https://example.com/image.jpg"
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Price</Label>
               <Input
