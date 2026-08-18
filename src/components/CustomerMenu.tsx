@@ -171,11 +171,14 @@ export function CustomerMenu({ restaurant, lang }: CustomerMenuProps) {
             <Card key={p.id} className="overflow-hidden border-0 shadow-sm hover:shadow-md transition-shadow bg-white rounded-2xl">
               <CardContent className="p-0">
                 <div className="flex md:flex-col h-full">
-                  {/* Image Placeholder */}
-                  <div className="w-28 md:w-full md:h-40 bg-slate-100 shrink-0 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-slate-200/50 group-hover:bg-transparent transition-colors"></div>
-                    <ImageIcon className="w-8 h-8 opacity-50 mb-1" />
-                    <span className="text-[10px] uppercase tracking-wider font-semibold opacity-60">No Image</span>
+                  {/* Elegant Image Section */}
+                  <div className="w-32 md:w-full md:h-48 bg-slate-100 shrink-0 relative overflow-hidden group rounded-l-2xl md:rounded-b-none md:rounded-t-2xl">
+                    <img 
+                      src={p.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80"} 
+                      alt={lang === 'en' ? p.name : p.nameAr}
+                      className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/0 to-slate-900/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   </div>
                   
                   {/* Product Details */}

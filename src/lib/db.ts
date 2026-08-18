@@ -74,6 +74,7 @@ interface Product {
   prepTime: number;
   isAvailable: boolean;
   isFeatured: boolean;
+  image?: string; // أضفنا حقل الصورة هنا
   createdAt: string;
   updatedAt: string;
 }
@@ -408,6 +409,7 @@ export const db = {
       prepTime: data.prepTime || 15,
       isAvailable: data.isAvailable !== undefined ? data.isAvailable : true,
       isFeatured: data.isFeatured || false,
+      image: data.image || "", // تم الإضافة لدعم الصورة
       createdAt: now,
       updatedAt: now,
     };
@@ -762,7 +764,7 @@ export const db = {
       isHidden: false,
     });
 
-    // Create Products
+    // Create Products (مع روابط صور جاهزة واحترافية)
     this.createProduct({
       restaurantId: restaurant.id,
       categoryId: burgers.id,
@@ -778,6 +780,7 @@ export const db = {
       prepTime: 15,
       isAvailable: true,
       isFeatured: true,
+      image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80" // صورة برجر
     });
 
     this.createProduct({
@@ -795,6 +798,7 @@ export const db = {
       prepTime: 15,
       isAvailable: true,
       isFeatured: true,
+      image: "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80" // صورة برجر جبنة
     });
 
     this.createProduct({
@@ -812,6 +816,7 @@ export const db = {
       prepTime: 2,
       isAvailable: true,
       isFeatured: false,
+      image: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80" // صورة كولا
     });
 
     this.createProduct({
@@ -829,6 +834,7 @@ export const db = {
       prepTime: 5,
       isAvailable: true,
       isFeatured: false,
+      image: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80" // صورة كيك شوكولاتة
     });
 
     // Create Employees
