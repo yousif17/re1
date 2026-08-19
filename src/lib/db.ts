@@ -1,4 +1,4 @@
-// Database layer using Firebase Firestore
+﻿// Database layer using Firebase Firestore
 // Multi-tenant architecture with restaurantId isolation
 
 import { firestore } from "./firebase";
@@ -290,7 +290,7 @@ export const db = {
     callback?: () => void
   ): () => void {
     console.log(
-      "🔄 Starting real-time sync for restaurant:",
+      "ًں”„ Starting real-time sync for restaurant:",
       restaurantId
     );
 
@@ -316,7 +316,7 @@ export const db = {
         },
         (error) => {
           console.error(
-            `❌ Firebase realtime error [${collectionName}]`,
+            `â‌Œ Firebase realtime error [${collectionName}]`,
             error
           );
         }
@@ -396,7 +396,7 @@ export const db = {
     );
 
     return () => {
-      console.log("🛑 Stopping Firebase realtime sync");
+      console.log("ًں›‘ Stopping Firebase realtime sync");
 
       unsubscribers.forEach((unsubscribe) => {
         unsubscribe();
@@ -458,11 +458,11 @@ export const db = {
         firebaseInitialized = true;
 
         console.log(
-          "✅ Firebase database initialized successfully"
+          "âœ… Firebase database initialized successfully"
         );
       } catch (error) {
         console.error(
-          "❌ Failed to initialize Firebase database:",
+          "â‌Œ Failed to initialize Firebase database:",
           error
         );
 
@@ -1254,7 +1254,7 @@ export const db = {
     const restaurant = this.createRestaurant({
       name: "Burger House",
       slug: "burger-house",
-      logo: "🍔",
+      logo: "ًںچ”",
       cover: "",
       description:
         "Delicious burgers and more",
@@ -1336,7 +1336,7 @@ export const db = {
     const burgers = this.createCategory({
       restaurantId: restaurant.id,
       name: "Burgers",
-      nameAr: "برجر",
+      nameAr: "ط¨ط±ط¬ط±",
       sortOrder: 1,
       isHidden: false,
     });
@@ -1344,7 +1344,7 @@ export const db = {
     const drinks = this.createCategory({
       restaurantId: restaurant.id,
       name: "Drinks",
-      nameAr: "مشروبات",
+      nameAr: "ظ…ط´ط±ظˆط¨ط§طھ",
       sortOrder: 2,
       isHidden: false,
     });
@@ -1352,7 +1352,7 @@ export const db = {
     const desserts = this.createCategory({
       restaurantId: restaurant.id,
       name: "Desserts",
-      nameAr: "حلويات",
+      nameAr: "ط­ظ„ظˆظٹط§طھ",
       sortOrder: 3,
       isHidden: false,
     });
@@ -1362,11 +1362,11 @@ export const db = {
       restaurantId: restaurant.id,
       categoryId: burgers.id,
       name: "Classic Burger",
-      nameAr: "برجر كلاسيك",
+      nameAr: "ط¨ط±ط¬ط± ظƒظ„ط§ط³ظٹظƒ",
       description:
         "Beef patty with lettuce, tomato, and special sauce",
       descriptionAr:
-        "لحم بقري مع خس وطماطم وصوص خاص",
+        "ظ„ط­ظ… ط¨ظ‚ط±ظٹ ظ…ط¹ ط®ط³ ظˆط·ظ…ط§ط·ظ… ظˆطµظˆطµ ط®ط§طµ",
       price: 120,
       costPrice: 60,
       sku: "BUR-001",
@@ -1383,11 +1383,11 @@ export const db = {
       restaurantId: restaurant.id,
       categoryId: burgers.id,
       name: "Cheese Burger",
-      nameAr: "برجر جبنة",
+      nameAr: "ط¨ط±ط¬ط± ط¬ط¨ظ†ط©",
       description:
         "Beef patty with cheddar cheese",
       descriptionAr:
-        "لحم بقري مع جبنة شيدر",
+        "ظ„ط­ظ… ط¨ظ‚ط±ظٹ ظ…ط¹ ط¬ط¨ظ†ط© ط´ظٹط¯ط±",
       price: 140,
       costPrice: 70,
       sku: "BUR-002",
@@ -1404,11 +1404,11 @@ export const db = {
       restaurantId: restaurant.id,
       categoryId: drinks.id,
       name: "Cola",
-      nameAr: "كولا",
+      nameAr: "ظƒظˆظ„ط§",
       description:
         "Refreshing cola drink",
       descriptionAr:
-        "مشروب كولا منعش",
+        "ظ…ط´ط±ظˆط¨ ظƒظˆظ„ط§ ظ…ظ†ط¹ط´",
       price: 30,
       costPrice: 10,
       sku: "DRK-001",
@@ -1425,11 +1425,11 @@ export const db = {
       restaurantId: restaurant.id,
       categoryId: desserts.id,
       name: "Chocolate Cake",
-      nameAr: "كيك شوكولاتة",
+      nameAr: "ظƒظٹظƒ ط´ظˆظƒظˆظ„ط§طھط©",
       description:
         "Rich chocolate cake slice",
       descriptionAr:
-        "قطعة كيك شوكولاتة غنية",
+        "ظ‚ط·ط¹ط© ظƒظٹظƒ ط´ظˆظƒظˆظ„ط§طھط© ط؛ظ†ظٹط©",
       price: 80,
       costPrice: 35,
       sku: "DES-001",
@@ -1494,6 +1494,6 @@ export const db = {
       setTimeout(resolve, 1000)
     );
 
-    console.log("✅ Firebase seed completed");
+    console.log("âœ… Firebase seed completed");
   },
 };
